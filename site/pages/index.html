@@ -1,0 +1,61 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Option</title>
+<style>
+body{font:14px/1.6 system-ui,sans-serif;max-width:960px;margin:0 auto;padding:20px;color:#111;background:#fff}
+pre{background:#f5f5f5;padding:12px;border-radius:4px;font-size:12px;overflow-x:auto}
+a{color:#06c}h1{font-size:24px;border-bottom:2px solid #111;padding-bottom:8px}
+h2{font-size:18px;margin-top:24px}.addr{font-family:monospace;font-size:11px}
+.data{font-family:monospace;font-size:11px;color:#555}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px}
+th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#f5f5f5}tr:hover{background:#fafafa}
+.btn{display:inline-block;padding:8px 16px;background:#111;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;margin:4px;text-decoration:none}
+.btn:hover{background:#333}.btn.green{background:#0a0}.btn.red{background:#c00}
+.btn:disabled{background:#999}
+input,textarea,select{padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin:4px;box-sizing:border-box}
+label{font-weight:600;font-size:12px;display:block;margin-top:8px}
+.card{border:1px solid #ddd;border-radius:8px;padding:16px;margin:12px 0}
+.tab{display:inline-block;padding:8px 16px;cursor:pointer;border:1px solid #ddd;border-bottom:none;border-radius:4px 4px 0 0;margin-right:4px;background:#f5f5f5}
+.tab.active{background:#fff;font-weight:600}
+.tab-content{display:none;border:1px solid #ddd;padding:16px;margin-top:-1px}
+.tab-content.active{display:block}
+pre.tx{display:none;margin-top:8px;max-height:200px;overflow-y:auto;background:#f5f5f5;padding:8px}
+</style></head><body>
+<h1>AI Option</h1>
+<p>Decentralized prediction market. All contract functions exposed. <a href="https://github.com/anyrust/aioption">GitHub</a></p>
+
+<div id="tabs">
+<span class="tab active" data-tab="options">📊 Options</span>
+<span class="tab" data-tab="create">➕ Create</span>
+</div>
+<div id="options" class="tab-content active"><div id="optionsList">Loading...</div></div>
+<div id="create" class="tab-content">
+<div class="card">
+<h2>Create New Option</h2>
+<label>Question</label><input id="cq" type="text" placeholder="e.g. Will ETH exceed $5000 by 2026?">
+<label>Options (comma-separated)</label><input id="co" type="text" value="YES,NO" placeholder="YES,NO,MAYBE">
+<label>Min Resolutions</label><input id="cmr" type="number" value="1" min="1" max="10">
+<label>Trading Duration (minutes)</label><input id="ctd" type="number" value="10" min="1">
+<label>Resolution Window (minutes, after trading)</label><input id="crw" type="number" value="30" min="1">
+<button class="btn green" onclick="createOption()">Create Option</button>
+<pre class="tx" id="createTx"></pre>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13/dist/ethers.umd.min.js"></script>
+<script>
+const FACTORY="0x66a449082b61129b1740DAEa487D1793467bA020";
+let signer,account;
+async function getSigner(){if(!window.ethereum)throw new Error("Install MetaMask");if(!signer){const p=new ethers.BrowserProvider(window.ethereum);await p.send("eth_requestAccounts");signer=await p.getSigner();account=await signer.getAddress();try{await p.send("wallet_switchEthereumChain",[{chainId:"0xa4b1"}])}catch(e){if(e.code===4902)await window.ethereum.request({method:"wallet_addEthereumChain",params:[{chainId:"0xa4b1",chainName:"Arbitrum One",rpcUrls:["https://arb1.arbitrum.io/rpc"],nativeCurrency:{name:"ETH",symbol:"ETH",decimals:18},blockExplorerUrls:["https://arbiscan.io"]}]})}}return signer}
+
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab,.tab-content").forEach(e=>e.classList.remove("active"));t.classList.add("active");document.getElementById(t.dataset.tab).classList.add("active")});
+
+async function loadOptions(){try{const r=await fetch("/api/options.json");const d=await r.json();let h="";for(const o of d.options){h+=`<tr><td class="addr"><a href="#" onclick="showOption('${o.address}')">${o.address.slice(0,14)}...</a></td><td>${o.question.slice(0,40)}</td><td>${o.status}</td><td>${o.winner}</td><td>${o.settled?"✓":""}</td></tr>`}document.getElementById("optionsList").innerHTML=`<table><tr><th>Address</th><th>Question</th><th>Status</th><th>Winner</th><th>Settled</th></tr>${h||'<tr><td colspan="5">None yet</td></tr>'}</table>`}catch(e){document.getElementById("optionsList").innerHTML="Error loading options"}}
+loadOptions();
+
+async function createOption(){try{const s=await getSigner();const q=document.getElementById("cq").value;const opts=document.getElementById("co").value.split(",").map(o=>o.trim());const mr=parseInt(document.getElementById("cmr").value);const td=parseInt(document.getElementById("ctd").value);const rw=parseInt(document.getElementById("crw").value);const now=Math.floor(Date.now()/1000);const abi=["function createOption((string,string,uint256,bytes32,uint256,uint256,uint256,uint256,string[]))"];const f=new ethers.Contract(FACTORY,abi,s);const fp="0xdeadbeef01000000000000000000000000000000000000000000000000000000";const tx=await f.createOption([q,"aijudge",1,fp,now,now+td*60,now+(td+rw)*60,mr,opts]);const el=document.getElementById("createTx");el.style.display="block";el.textContent="TX: "+tx.hash;await tx.wait();el.textContent="✓ Created! "+tx.hash;loadOptions()}catch(e){document.getElementById("createTx").style.display="block";document.getElementById("createTx").textContent="Error: "+e.message}}
+
+async function showOption(addr){const r=await fetch("/api/options.json");const d=await r.json();const o=d.options.find(x=>x.address===addr);if(!o)return;const div=document.createElement("div");div.className="card";div.innerHTML=`<h2>${o.question}</h2><pre class="data">Address: ${o.address}\nStatus: ${o.status}\nWinner: ${o.winner} | Settled: ${o.settled}\nResolutions: ${o.resolutionCount}/${o.minResolutions} | ReRound: ${o.reRound}\nCreator: ${o.creator}\nTrading End: ${new Date(o.tradingEnd*1000).toLocaleString()}\nResolve Deadline: ${new Date(o.resolveDeadline*1000).toLocaleString()}</pre><button class="btn green" onclick="deposit('${addr}')">Deposit</button> <button class="btn" onclick="claim('${addr}')">Claim</button> <button class="btn red" onclick="forceResolve('${addr}')">Force Resolve</button> <pre class="tx"></pre>`;const list=document.getElementById("optionsList");list.insertBefore(div,list.firstChild);div.scrollIntoView({behavior:"smooth"})}
+async function deposit(addr){try{const s=await getSigner();const tx=await s.sendTransaction({to:addr,value:ethers.parseEther("0.001"),data:"0xd0e30db0"});showTx(tx,addr)}catch(e){alert(e.message)}}
+async function claim(addr){try{const s=await getSigner();const f=new ethers.Contract(addr,["function claimReward()"],s);const tx=await f.claimReward();showTx(tx,addr)}catch(e){alert(e.message)}}
+async function forceResolve(addr){try{const s=await getSigner();const f=new ethers.Contract(addr,["function forceResolve()"],s);const tx=await f.forceResolve();showTx(tx,addr)}catch(e){alert(e.message)}}
+function showTx(tx,addr){const el=document.querySelector(`[onclick*="${addr}"]`).nextElementSibling;el.style.display="block";el.textContent="TX: "+tx.hash;tx.wait().then(()=>el.textContent="✓ Confirmed: "+tx.hash)}
+</script></body></html>
