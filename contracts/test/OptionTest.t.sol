@@ -60,7 +60,7 @@ contract OptionTest is Test {
     // ===== Deployment =====
     function test_DeployAndTrade() public {
         _setup();
-        vm.prank(u1); address addr = factory.createOption(_cfg());
+        vm.prank(u1); (address addr,) = factory.createOption(_cfg());
         Option opt = Option(payable(addr));
         assertEq(uint256(opt.status()), uint256(Option.Status.TRADING));
         assertEq(opt.optionCount(), 3);
@@ -70,7 +70,7 @@ contract OptionTest is Test {
     // ===== Multi-provider consensus =====
     function test_Consensus() public {
         _setup();
-        vm.prank(u1); address addr = factory.createOption(_cfg());
+        vm.prank(u1); (address addr,) = factory.createOption(_cfg());
         Option opt = Option(payable(addr));
         vm.warp(block.timestamp + 8 days); opt.startResolving();
         string memory q = opt.question();
@@ -84,7 +84,7 @@ contract OptionTest is Test {
     // ===== Re-resolution on disagreement =====
     function test_ReResolution() public {
         _setup();
-        vm.prank(u1); address addr = factory.createOption(_cfg());
+        vm.prank(u1); (address addr,) = factory.createOption(_cfg());
         Option opt = Option(payable(addr));
         vm.warp(block.timestamp + 8 days); opt.startResolving();
         string memory q = opt.question();
@@ -107,7 +107,7 @@ contract OptionTest is Test {
     // ===== Settlement =====
     function test_Settle() public {
         _setup();
-        vm.prank(u1); address addr = factory.createOption(_cfg());
+        vm.prank(u1); (address addr,) = factory.createOption(_cfg());
         Option opt = Option(payable(addr));
         vm.prank(u1); address(addr).call{value: 3 ether}("");
         vm.warp(block.timestamp + 8 days); opt.startResolving();
@@ -128,7 +128,7 @@ contract OptionTest is Test {
     // ===== Slashing (via ProviderRegistry) =====
     function test_SlashNonResponder() public {
         _setup();
-        vm.prank(u1); address addr = factory.createOption(_cfg());
+        vm.prank(u1); (address addr,) = factory.createOption(_cfg());
         Option opt = Option(payable(addr));
         vm.prank(u1); address(addr).call{value: 1 ether}("");
         vm.warp(block.timestamp + 8 days); opt.startResolving();
@@ -149,7 +149,7 @@ contract OptionTest is Test {
     // ===== Edge: can't submit twice in same round =====
     function test_CantResubmitSameRound() public {
         _setup();
-        vm.prank(u1); address addr = factory.createOption(_cfg());
+        vm.prank(u1); (address addr,) = factory.createOption(_cfg());
         Option opt = Option(payable(addr));
         vm.warp(block.timestamp + 8 days); opt.startResolving();
         string memory q = opt.question();
