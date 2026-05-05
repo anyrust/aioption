@@ -69,7 +69,9 @@ contract ProviderRegistry {
         bool active;
         uint256 registeredAt;
         uint256 totalResolved;
-        address resolutionSigner; // separate key for signing (can rotate freely)
+        address resolutionSigner;
+        uint256 availableUntil;
+        address referral; // handover: if unavailable, this provider takes over
     }
 
     // ============ State ============
@@ -152,7 +154,9 @@ contract ProviderRegistry {
             appId: _appId, version: _version, stake: msg.value,
             pricePerResolution: _pricePerResolution, active: true,
             registeredAt: block.timestamp, totalResolved: 0,
-            resolutionSigner: address(0)  // defaults to using ETH key
+            resolutionSigner: address(0),
+            availableUntil: type(uint256).max,
+            referral: address(0)
         });
 
         activeProviders.push(msg.sender);
@@ -182,6 +186,30 @@ contract ProviderRegistry {
      *         The ETH key stays cold (only for staking).
      *         Resolution key is hot — used for signing AI results.
      */
+    /**
+     * @notice Provider sets their availability deadline.
+     *         Must be at least 3 days from now.
+     *         After this time, provider cannot submit new resolutions.
+     */
+    /**
+     * @notice Provider sets a referral: if unavailable, this provider takes over.
+     *         Original provider's stake stays locked — they remain responsible.
+     */
+    function setReferral(address _referral) external onlyProvider {
+        require(_referral != msg.sender, "Cannot refer to self");
+        require(providers[_referral].active, "Referral not active");
+        require(
+            keccak256(bytes(providers[_referral].appId)) == keccak256(bytes(providers[msg.sender].appId)),
+            "Different app"
+        );
+        providers[msg.sender].referral = _referral;
+    }
+
+    function setAvailableUntil(uint256 _timestamp) external onlyProvider {
+        require(_timestamp >= block.timestamp + 3 days, "Must be >= 3 days");
+        providers[msg.sender].availableUntil = _timestamp;
+    }
+
     function updateResolutionSigner(address _newSigner) external onlyProvider {
         require(_newSigner != address(0), "Zero address");
         providers[msg.sender].resolutionSigner = _newSigner;
