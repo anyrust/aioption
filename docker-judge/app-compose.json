@@ -1,0 +1,25 @@
+{
+  "manifest_version": "1.0",
+  "name": "aioption-judge",
+  "runner": "docker-compose",
+  "docker_compose_file": "version: '3.8'\nservices:\n  judge:\n    build: .\n    image: aioption-judge:latest\n    restart: unless-stopped\n    environment:\n      - OPENROUTER_API_KEY\n      - ETH_PRIVATE_KEY\n      - RPC_URL=${RPC_URL:-https://ethereum-sepolia.publicnode.com}\n      - BET_CONTRACT_ADDRESS\n      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-opus-4-6}\n      - POLL_INTERVAL=${POLL_INTERVAL:-15}\n    logging:\n      driver: json-file\n      options:\n        max-size: \"10m\"\n        max-file: \"3\"",
+  "kms_enabled": true,
+  "gateway_enabled": false,
+  "public_logs": false,
+  "public_sysinfo": false,
+  "public_tcbinfo": true,
+  "allowed_envs": [
+    "OPENROUTER_API_KEY",
+    "ETH_PRIVATE_KEY",
+    "RPC_URL",
+    "BET_CONTRACT_ADDRESS",
+    "OPENROUTER_MODEL",
+    "POLL_INTERVAL"
+  ],
+  "key_provider": "kms",
+  "key_provider_id": "ethereum-sepolia",
+  "no_instance_id": false,
+  "secure_time": true,
+  "storage_fs": false,
+  "swap_size": 0
+}

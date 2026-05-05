@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  judge:
+    build: .
+    image: aioption-judge:latest
+    restart: unless-stopped
+    environment:
+      # Provider MUST set these via dstack Encrypted Env Vars:
+      - OPENROUTER_API_KEY
+      - ETH_PRIVATE_KEY
+      # Optional overrides:
+      - RPC_URL=${RPC_URL:-https://ethereum-sepolia.publicnode.com}
+      - BET_CONTRACT_ADDRESS
+      - PROVIDER_REGISTRY_ADDRESS
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-anthropic/claude-opus-4-6}
+      - TEE_MODE=${TEE_MODE:-local}
+      - POLL_INTERVAL=${POLL_INTERVAL:-15}
+    volumes:
+      # Mount dstack socket for TEE attestation & key derivation
+      - /var/run/dstack.sock:/var/run/dstack.sock
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
