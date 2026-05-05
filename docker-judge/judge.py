@@ -81,6 +81,7 @@ PROVIDERS = [
         "endpoint": "https://api.openai.com/v1/chat/completions",
         "key_env": "OPENAI_API_KEY",
         "model": "gpt-5.5",
+        "extra_body": {"web_search_options": {"enabled": True}},
     },
 ]
 
@@ -105,7 +106,8 @@ def query_ai(question: str, options: list[str]) -> Optional[int]:
             else:
                 result = _call_openai_compat(
                     endpoint, api_key, provider["model"],
-                    user_msg, provider.get("headers", {})
+                    user_msg, provider.get("headers", {}),
+                    provider.get("extra_body")
                 )
 
             if result is not None:
@@ -122,11 +124,12 @@ def query_ai(question: str, options: list[str]) -> Optional[int]:
 
 
 def _call_openai_compat(endpoint: str, api_key: str, model: str,
-                         user_msg: str, extra_headers: dict) -> Optional[int]:
+                         user_msg: str, extra_headers: dict,
+                         extra_body: dict | None = None) -> Optional[int]:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     headers.update(extra_headers)
 
-    resp = requests.post(endpoint, json={
+    body = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -134,7 +137,11 @@ def _call_openai_compat(endpoint: str, api_key: str, model: str,
         ],
         "max_tokens": 10,
         "temperature": 0.0,
-    }, headers=headers, timeout=30)
+    }
+    if extra_body:
+        body.update(extra_body)
+
+    resp = requests.post(endpoint, json=body, headers=headers, timeout=30)
     resp.raise_for_status()
     return _parse_response(resp.json()["choices"][0]["message"]["content"], len(options))
 
