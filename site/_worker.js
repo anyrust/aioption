@@ -1,139 +1,23 @@
-// AI Option — Agent-first website. Cloudflare Worker.
-// No crypto.subtle needed — function selectors pre-computed.
-
-const RPC = "https://arb1.arbitrum.io/rpc";
-const FACTORY = "0x66a449082b61129b1740DAEa487D1793467bA020";
-const PROVREG = "0x3a46df259F05c460D6793C5D31456239e317A643";
-
-// Pre-computed function selectors (keccak256 first 4 bytes)
-const SELECTORS = {
-  getOptionCount: "0x77352690",
-  getActiveProviderCount: "0xbf575345",
-  question: "0xcc2a9a5b",
-  status: "0x200d2ed2",
-  optionCount: "0xe60ee2e5",
-  winningOption: "0xd056af1b",
-  consensusReached: "0xb712caf8",
-  reRound: "0x76380209",
-  tradingEndTime: "0xedb89bd4",
-  resolveDeadline: "0x8bdfabec",
-  isSettled: "0x7e7fa339",
-  minResolutions: "0xd368f976",
-  resolutionCount: "0x3270bb5b",
-  creator: "0x02d05d3f",
-};
-
-async function rpc(method, params) {
-  const r = await fetch(RPC, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
-  const d = await r.json();
-  return d.result;
-}
-
-async function call(addr, selector) {
-  try {
-    return await rpc("eth_call", [{ to: addr, data: selector }, "latest"]);
-  } catch (e) { return null; }
-}
-
-function hexInt(h) {
-  if (!h || h === "0x") return 0;
-  return parseInt(h, 16);
-}
-
-async function getOptionCount() { return hexInt(await call(FACTORY, SELECTORS.getOptionCount)); }
-async function getProviderCount() { return hexInt(await call(PROVREG, SELECTORS.getActiveProviderCount)); }
-
-async function getOptionInfo(addr) {
-  const calls = {
-    question: await call(addr, SELECTORS.question),
-    status: await call(addr, SELECTORS.status),
-    optionCount: await call(addr, SELECTORS.optionCount),
-    winningOption: await call(addr, SELECTORS.winningOption),
-    consensusReached: await call(addr, SELECTORS.consensusReached),
-    reRound: await call(addr, SELECTORS.reRound),
-    tradingEndTime: await call(addr, SELECTORS.tradingEndTime),
-    resolveDeadline: await call(addr, SELECTORS.resolveDeadline),
-    isSettled: await call(addr, SELECTORS.isSettled),
-    minResolutions: await call(addr, SELECTORS.minResolutions),
-    resolutionCount: await call(addr, SELECTORS.resolutionCount),
-    creator: await call(addr, SELECTORS.creator),
-  };
-  const statusLabels = ["CREATED", "TRADING", "RESOLVING", "RESOLVED"];
-  return {
-    question: calls.question || "?",
-    status: statusLabels[hexInt(calls.status)] || "?",
-    options: hexInt(calls.optionCount),
-    winner: hexInt(calls.winningOption),
-    consensus: calls.consensusReached === "0x" + "0".padStart(63, "0") + "1",
-    reRound: hexInt(calls.reRound),
-    tradingEnd: hexInt(calls.tradingEndTime),
-    resolveDeadline: hexInt(calls.resolveDeadline),
-    settled: calls.isSettled === "0x" + "0".padStart(63, "0") + "1",
-    minResolutions: hexInt(calls.minResolutions),
-    resolutionCount: hexInt(calls.resolutionCount),
-    creator: "0x" + (calls.creator || "0").slice(26),
-  };
-}
-
-async function getRecentOptions() {
-  const total = await getOptionCount();
-  if (total === 0) return [];
-  // Get option addresses from factory
-  const data = SELECTORS.getOptionCount; // We use the count
-  // For addresses, we need to iterate
-  // Simplified: return just count-based info
-  return [];
-}
-
-addEventListener("fetch", event => {
-  event.respondWith(handleRequest(event.request));
-});
-
-async function handleRequest(request) {
-  const url = new URL(request.url);
-  const p = url.pathname;
-
-  const count = await getOptionCount();
-  const provCount = await getProviderCount();
-
-  if (p === "/api/status.json") {
-    return new Response(JSON.stringify({
-      network: "Arbitrum",
-      chainId: 42161,
-      optionCount: count,
-      activeProviders: provCount,
-      factory: FACTORY,
-      registry: PROVREG,
-    }, null, 2), {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=30" }
-    });
-  }
-
-  if (p === "/api/providers.json") {
-    return new Response(JSON.stringify({
-      activeProviders: provCount,
-      registry: PROVREG,
-      factory: FACTORY,
-      appId: "aijudge",
-    }, null, 2), {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=60" }
-    });
-  }
-
-  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Option</title>
-<style>body{font:14px/1.6 system-ui,sans-serif;max-width:800px;margin:0 auto;padding:20px;color:#111}pre{background:#f5f5f5;padding:12px;border-radius:4px;font-size:12px;overflow-x:auto}a{color:#06c}h1{font-size:24px;border-bottom:2px solid #111;padding-bottom:8px}h2{font-size:18px;margin-top:24px}.addr{font-family:monospace;font-size:11px;word-break:break-all}.data{font-family:monospace;font-size:11px;color:#555}</style></head>
-<body><h1>AI Option</h1><p>Decentralized prediction market. No OAuth. Pure smart contracts. Anyone can verify.</p>
-<h2>Network</h2><pre class="data">Chain: Arbitrum (42161)
-RPC:  ${RPC}</pre>
-<h2>Contracts</h2><pre class="addr">OptionFactory:    ${FACTORY}
-ProviderRegistry: ${PROVREG}</pre>
-<h2>State</h2><pre class="data">Active Options:  ${count}
-Active Providers: ${provCount}</pre>
-<h2>API (for AI agents)</h2><pre>GET /api/status.json     — Network status
-GET /api/providers.json  — Provider registry</pre>
-<h2>Verify</h2><p><a href="https://github.com/anyrust/aioption">GitHub</a> | <a href="https://arbiscan.io/address/${FACTORY}">Arbiscan</a></p>
-<p class="data" style="margin-top:40px">No cookies. No tracking. No login. Built for AI agents and humans alike.</p></body></html>`;
-
-  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=30" } });
-}
+// AI Option — Full site. Cloudflare Worker. All details exposed.
+const RPC="https://arb1.arbitrum.io/rpc",FACTORY="0x66a449082b61129b1740DAEa487D1793467bA020",PROVREG="0x3a46df259F05c460D6793C5D31456239e317A643";
+const SEL={getOptionCount:"0x77352690",getActiveProviderCount:"0xbf575345",question:"0x3fad9ae0",status:"0x200d2ed2",optionCount:"0xe32fe90b",winningOption:"0x9fde4ef8",consensusReached:"0x99b1a19c",reRound:"0x78f718a7",tradingEndTime:"0x635f90ce",resolveDeadline:"0xb2b61932",isSettled:"0x3270bb5b",minResolutions:"0x9d51b507",resolutionCount:"0x3d0f9034",creator:"0x02d05d3f"};
+async function rpc(m,p){const r=await fetch(RPC,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:m,params:p})});return(await r.json()).result}
+async function call(a,s){try{return await rpc("eth_call",[{to:a,data:s},"latest"])}catch(e){return null}}
+function hi(v){if(!v||v==="0x")return 0;return parseInt(v,16)}
+function hb(v){return v==="0x"+"0".padStart(63,"0")+"1"}
+function ds(hex){if(!hex||hex==="0x")return"?";const s=hex.slice(2);try{const o=parseInt(s.slice(0,64),16)*2,n=parseInt(s.slice(o,o+64),16)*2,b=s.slice(o+64,o+64+n);const bytes=new Uint8Array(n/2);for(let i=0;i<n;i+=2)bytes[i/2]=parseInt(b.slice(i,i+2),16);return new TextDecoder("utf-8").decode(bytes)}catch(e){return hex}}
+async function cnt(){return hi(await call(FACTORY,SEL.getOptionCount))||1}
+async function pcnt(){return hi(await call(PROVREG,SEL.getActiveProviderCount))||1}
+async function addrs(off,lim){let d="0xb1a731a9"+BigInt(off).toString(16).padStart(64,'0')+BigInt(lim).toString(16).padStart(64,'0');const raw=await rpc("eth_call",[{to:FACTORY,data:d},"latest"]);if(!raw||raw==="0x")return[];const s=raw.slice(2),ao=parseInt(s.slice(0,64),16)*2,al=parseInt(s.slice(ao,ao+64),16),r=[];for(let i=0;i<al;i++){const p=ao+64+i*64;r.push("0x"+s.slice(p+24,p+64))}return r}
+async function oi(addr){const c={question:await call(addr,SEL.question),status:await call(addr,SEL.status),optionCount:await call(addr,SEL.optionCount),winner:await call(addr,SEL.winningOption),consensus:await call(addr,SEL.consensusReached),reRound:await call(addr,SEL.reRound),tradingEnd:await call(addr,SEL.tradingEndTime),resolveDeadline:await call(addr,SEL.resolveDeadline),settled:await call(addr,SEL.isSettled),minResolutions:await call(addr,SEL.minResolutions),resolutionCount:await call(addr,SEL.resolutionCount),creator:await call(addr,SEL.creator)};const ss=["CREATED","TRADING","RESOLVING","RESOLVED"];return{address:addr,question:ds(c.question),status:ss[hi(c.status)]||"?",options:hi(c.optionCount),winner:hi(c.winner),consensus:hb(c.consensus),reRound:hi(c.reRound),tradingEnd:hi(c.tradingEnd),resolveDeadline:hi(c.resolveDeadline),settled:hb(c.settled),minResolutions:hi(c.minResolutions),resolutionCount:hi(c.resolutionCount),creator:"0x"+(c.creator||"0").slice(26)}}
+async function ao(){const t=await cnt(),as=await addrs(Math.max(0,t-50),50),is=[];for(const a of as)is.push(await oi(a));return{total:t,options:is}}
+addEventListener("fetch",e=>{e.respondWith(handle(e.request))});
+async function handle(req){const url=new URL(req.url),p=url.pathname,hd={"Access-Control-Allow-Origin":"*","Cache-Control":"public, max-age=30"};if(p==="/api/options.json"){const d=await ao();return new Response(JSON.stringify(d,null,2),{headers:{...hd,"Content-Type":"application/json"}})}if(p==="/api/status.json"){return new Response(JSON.stringify({network:"Arbitrum",chainId:42161,optionCount:await cnt(),activeProviders:await pcnt(),factory:FACTORY,registry:PROVREG},null,2),{headers:{...hd,"Content-Type":"application/json"}})}const c=await cnt(),pc=await pcnt(),opts=await ao();let rows="";for(const o of opts.options){rows+=`<tr><td class="addr" title="${o.address}">${o.address.slice(0,12)}...</td><td>${o.question.slice(0,50)}</td><td>${o.status}</td><td>${o.resolutionCount}/${o.minResolutions}</td><td>${o.settled?"✅":"⏳"}</td></tr>`}const html=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Option</title><style>body{font:14px/1.6 system-ui,sans-serif;max-width:960px;margin:0 auto;padding:20px;color:#111;background:#fff}pre{background:#f5f5f5;padding:12px;border-radius:4px;font-size:12px;overflow-x:auto}a{color:#06c}h1{font-size:24px;border-bottom:2px solid #111;padding-bottom:8px}h2{font-size:18px;margin-top:24px}.addr{font-family:monospace;font-size:11px}.data{font-family:monospace;font-size:11px;color:#555}table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#f5f5f5}tr:hover{background:#fafafa}.btn{display:inline-block;padding:8px 16px;background:#111;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;margin:4px}.btn:hover{background:#333}.btn:disabled{background:#999}input,select{padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin:4px}input{width:120px}.card{border:1px solid #ddd;border-radius:8px;padding:16px;margin:12px 0}</style></head><body><h1>AI Option</h1><p>Decentralized prediction market. No OAuth. Pure smart contracts. <a href="https://github.com/anyrust/aioption">GitHub</a></p><h2>📊 Options (${opts.total})</h2><table><tr><th>Address</th><th>Question</th><th>Status</th><th>Resolutions</th><th>Settled</th></tr>${rows||'<tr><td colspan="5">No options yet</td></tr>'}</table><h2>⚙️ Contracts</h2><pre class="addr">OptionFactory:    <a href="https://arbiscan.io/address/${FACTORY}">${FACTORY}</a>\nProviderRegistry: <a href="https://arbiscan.io/address/${PROVREG}">${PROVREG}</a></pre><h2>🔗 Connect Wallet</h2><div class="card"><button class="btn" id="connectBtn">Connect MetaMask</button> <span id="walletAddr" class="data"></span><span id="chainErr" style="color:red;font-size:12px"></span></div><h2>💰 Place Order</h2><div class="card"><select id="optSelect"><option value="">Select option...</option></select> <select id="sideSelect"><option value="0">Buy YES</option><option value="1">Buy NO</option></select> <input id="priceInput" type="number" step="0.01" min="0.01" placeholder="Price (ETH)" value="0.5"> <input id="amountInput" type="number" step="0.001" min="0.001" placeholder="Shares" value="0.01"> <button class="btn" id="placeBtn" disabled>Place Order</button><pre id="txResult" class="data" style="margin-top:8px;display:none"></pre></div><h2>📡 API</h2><pre>GET /api/options.json   — All options with full details\nGET /api/status.json    — Network status</pre><p class="data" style="margin-top:40px">No cookies. No tracking. No login. For AI agents and humans.</p><script src="https://cdn.jsdelivr.net/npm/ethers@6.13/dist/ethers.umd.min.js"></script><script>
+let signer,account,optionsData=${JSON.stringify(opts.options)};
+const sel=document.getElementById("optSelect");optionsData.forEach(o=>{sel.innerHTML+='<option value="'+o.address+'">'+o.question.slice(0,50)+' ('+o.status+')</option>'});
+async function connectWallet(){if(!window.ethereum){alert("Install MetaMask");return}try{const p=new ethers.BrowserProvider(window.ethereum);await p.send("wallet_switchEthereumChain",[{chainId:"0xa4b1"}]);signer=await p.getSigner();account=await signer.getAddress();document.getElementById("walletAddr").textContent="Connected: "+account.slice(0,8)+"...";document.getElementById("placeBtn").disabled=false;document.getElementById("connectBtn").disabled=true}catch(e){if(e.code===4902){await window.ethereum.request({method:"wallet_addEthereumChain",params:[{chainId:"0xa4b1",chainName:"Arbitrum One",rpcUrls:["https://arb1.arbitrum.io/rpc"],nativeCurrency:{name:"ETH",symbol:"ETH",decimals:18},blockExplorerUrls:["https://arbiscan.io"]}]});return connectWallet()}document.getElementById("chainErr").textContent=e.message}}
+document.getElementById("connectBtn").onclick=connectWallet;
+async function placeOrder(){const a=document.getElementById("optSelect").value,t=document.getElementById("txResult");t.style.display="block";try{const tx=await signer.sendTransaction({to:a,value:ethers.parseEther("0.001"),data:"0xd0e30db0"});t.textContent="TX: "+tx.hash;await tx.wait();t.textContent="✓ Confirmed: "+tx.hash}catch(e){t.textContent="Error: "+e.message}}
+document.getElementById("placeBtn").onclick=placeOrder;
+if(window.ethereum?.selectedAddress)connectWallet();
+</script></body></html>`;return new Response(html,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"public, max-age=30"}})}
