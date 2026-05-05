@@ -260,8 +260,9 @@ class Chain:
         tx = self.contract.functions.submitResolution(result, sig.signature).build_transaction({
             "from": self.acct.address,
             "nonce": self.w3.eth.get_transaction_count(self.acct.address),
-            "gas": 300000,
-            "gasPrice": self.w3.eth.gas_price,
+            "gas": 3000000,
+            "maxFeePerGas": self.w3.eth.max_priority_fee + 2 * self.w3.eth.get_block('latest')['baseFeePerGas'],
+            "maxPriorityFeePerGas": self.w3.eth.max_priority_fee,
         })
         signed = self.acct.sign_transaction(tx)
         h = self.w3.eth.send_raw_transaction(signed.raw_transaction)

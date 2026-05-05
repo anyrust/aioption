@@ -72,7 +72,7 @@ contract OrderBookContract is ReentrancyGuard {
         optionAddr = _optionAddr;
         creator = tx.origin;
         optionCount = _optionCount;
-        (bool ok, bytes memory data) = _optionAddr.staticcall(abi.encodeWithSignature("bettingEndTime()"));
+        (bool ok, bytes memory data) = _optionAddr.staticcall(abi.encodeWithSignature("tradingEndTime()"));
         uint256 _betEnd = ok ? abi.decode(data, (uint256)) : type(uint256).max;
         bettingEndTime = _betEnd;
     }
