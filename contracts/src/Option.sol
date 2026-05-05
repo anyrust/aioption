@@ -174,7 +174,9 @@ contract Option is ReentrancyGuard {
 
         bytes32 msgHash = keccak256(abi.encodePacked(address(this), question, _result));
         bytes32 ethHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", msgHash));
-        require(_recoverSigner(ethHash, _signature) == msg.sender, "Invalid signature");
+        // Verify against resolution signer (separate hot key), fallback to ETH key
+        address expectedSigner = info.resolutionSigner != address(0) ? info.resolutionSigner : msg.sender;
+        require(_recoverSigner(ethHash, _signature) == expectedSigner, "Invalid signature");
 
         resolutions[msg.sender] = Resolution(msg.sender, _result, _signature, block.timestamp, reRound);
         lastRoundSubmitted[msg.sender] = reRound + 1;

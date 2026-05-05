@@ -69,6 +69,7 @@ contract ProviderRegistry {
         bool active;
         uint256 registeredAt;
         uint256 totalResolved;
+        address resolutionSigner; // separate key for signing (can rotate freely)
     }
 
     // ============ State ============
@@ -150,7 +151,8 @@ contract ProviderRegistry {
         providers[msg.sender] = ProviderInfo({
             appId: _appId, version: _version, stake: msg.value,
             pricePerResolution: _pricePerResolution, active: true,
-            registeredAt: block.timestamp, totalResolved: 0
+            registeredAt: block.timestamp, totalResolved: 0,
+            resolutionSigner: address(0)  // defaults to using ETH key
         });
 
         activeProviders.push(msg.sender);
@@ -173,6 +175,16 @@ contract ProviderRegistry {
         if (_newPrice == 0) revert InvalidPrice();
         providers[msg.sender].pricePerResolution = _newPrice;
         emit ProviderPriceUpdated(msg.sender, providers[msg.sender].appId, providers[msg.sender].version, _newPrice);
+    }
+
+    /**
+     * @notice Provider rotates their resolution signing key.
+     *         The ETH key stays cold (only for staking).
+     *         Resolution key is hot — used for signing AI results.
+     */
+    function updateResolutionSigner(address _newSigner) external onlyProvider {
+        require(_newSigner != address(0), "Zero address");
+        providers[msg.sender].resolutionSigner = _newSigner;
     }
 
     function unregisterProvider() external onlyProvider {
