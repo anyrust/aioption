@@ -39,7 +39,7 @@ contract OrderBookContract is ReentrancyGuard {
 
     // ===== Immutables =====
     address public immutable factory;
-    address public immutable betContract;  // reads winningOption from here
+    address public immutable optionAddr;  // reads winningOption from here
     address public immutable creator;
     uint256 public immutable optionCount;
     uint256 public immutable bettingEndTime;
@@ -67,12 +67,12 @@ contract OrderBookContract is ReentrancyGuard {
     modifier afterResolve() { require(resolved); _; }
 
     // ===== Constructor =====
-    constructor(address _betContract, uint256 _optionCount) {
+    constructor(address _optionAddr, uint256 _optionCount) {
         factory = msg.sender;
-        betContract = _betContract;
+        optionAddr = _optionAddr;
         creator = tx.origin;
         optionCount = _optionCount;
-        (bool ok, bytes memory data) = _betContract.staticcall(abi.encodeWithSignature("bettingEndTime()"));
+        (bool ok, bytes memory data) = _optionAddr.staticcall(abi.encodeWithSignature("bettingEndTime()"));
         uint256 _betEnd = ok ? abi.decode(data, (uint256)) : type(uint256).max;
         bettingEndTime = _betEnd;
     }
@@ -147,7 +147,7 @@ contract OrderBookContract is ReentrancyGuard {
     function resolve() external {
         require(!resolved && block.timestamp > bettingEndTime);
         // Read winning option from BetContract
-        (bool ok, bytes memory data) = betContract.staticcall(abi.encodeWithSignature("winningOption()"));
+        (bool ok, bytes memory data) = optionAddr.staticcall(abi.encodeWithSignature("winningOption()"));
         if (ok) winningOption = abi.decode(data, (uint256));
         resolved = true;
     }

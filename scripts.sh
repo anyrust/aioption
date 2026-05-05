@@ -54,7 +54,7 @@ tz2unix() {
         echo "  $0 tz2unix \"2026-06-01 12:00\" \"America/New_York\""
         echo "  $0 tz2unix \"2026-12-31 23:59\" \"UTC\""
         echo ""
-        echo "Output: Unix timestamp (uint256 for BetConfig)"
+        echo "Output: Unix timestamp (uint256 for Config)"
         exit 1
     fi
 
@@ -85,7 +85,7 @@ tz2unix() {
     echo "Time:     $time_str"
     echo "Unix:     $unix_ts"
     echo ""
-    echo "# Use in BetConfig:"
+    echo "# Use in Config:"
     echo "bettingStartTime: $unix_ts"
 }
 

@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./PrefixRegistry.sol";
 
-interface IBetContract {
+interface IOption {
     function status() external view returns (uint8);
     function judgeAppId() external view returns (string memory);
     function hasProviderSubmitted(address) external view returns (bool);
@@ -253,7 +253,7 @@ contract ProviderRegistry {
 
     /**
      * @notice Anyone can report a Provider that failed to submit a resolution
-     * @param _betContract The bet contract address
+     * @param _optionAddr The bet contract address
      * @param _provider    The non-responding Provider
      *
      * Conditions:
@@ -263,11 +263,11 @@ contract ProviderRegistry {
      *
      * Penalty distribution: 50% to bet creator, 50% to bet contract for user refunds
      */
-    function slashNonResponder(address _betContract, address _provider) external {
+    function slashNonResponder(address _optionAddr, address _provider) external {
         ProviderInfo storage p = providers[_provider];
         require(p.active, "Not active provider");
 
-        IBetContract bet = IBetContract(_betContract);
+        IOption bet = IOption(_optionAddr);
         require(uint256(bet.status()) == 3, "Bet not resolved"); // RESOLVED
 
         require(
@@ -290,7 +290,7 @@ contract ProviderRegistry {
         (bool ok1, ) = creatorAddr.call{value: creatorShare}("");
         require(ok1, "Transfer to creator failed");
 
-        (bool ok2, ) = _betContract.call{value: userShare}("");
+        (bool ok2, ) = _optionAddr.call{value: userShare}("");
         require(ok2, "Transfer to bet failed");
 
         emit ProviderSlashed(_provider, penalty, msg.sender, "non-responder");

@@ -66,19 +66,13 @@ PROVIDERS = [
         "endpoint": "https://openrouter.ai/api/v1/chat/completions",
         "key_env": "OPENROUTER_API_KEY",
         "model": "anthropic/claude-opus-4-6",
-        "headers": {"HTTP-Referer": "https://github.com/aioption", "X-Title": "AI Option"},
+        "headers": {"HTTP-Referer": "https://github.com/aioption", "X-Title": "AI Option Judge"},
     },
     {
         "name": "DeepSeek",
         "endpoint": "https://api.deepseek.com/v1/chat/completions",
         "key_env": "DEEPSEEK_API_KEY",
         "model": "deepseek-chat",
-    },
-    {
-        "name": "Groq",
-        "endpoint": "https://api.groq.com/openai/v1/chat/completions",
-        "key_env": "GROQ_API_KEY",
-        "model": "llama-3.3-70b-versatile",
     },
     {
         "name": "Anthropic",
@@ -92,18 +86,6 @@ PROVIDERS = [
         "endpoint": "https://api.openai.com/v1/chat/completions",
         "key_env": "OPENAI_API_KEY",
         "model": "gpt-4o",
-    },
-    {
-        "name": "Together",
-        "endpoint": "https://api.together.xyz/v1/chat/completions",
-        "key_env": "TOGETHER_API_KEY",
-        "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-    },
-    {
-        "name": "Custom",
-        "endpoint": os.getenv("CUSTOM_AI_ENDPOINT", ""),
-        "key_env": "CUSTOM_AI_KEY",
-        "model": os.getenv("CUSTOM_AI_MODEL", "gpt-4o"),
     },
 ]
 
