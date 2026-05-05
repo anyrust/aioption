@@ -65,27 +65,22 @@ PROVIDERS = [
         "name": "OpenRouter",
         "endpoint": "https://openrouter.ai/api/v1/chat/completions",
         "key_env": "OPENROUTER_API_KEY",
-        "model": "anthropic/claude-opus-4-6",
+        "model": "perplexity/sonar-pro",
         "headers": {"HTTP-Referer": "https://github.com/aioption", "X-Title": "AI Option Judge"},
-    },
-    {
-        "name": "DeepSeek",
-        "endpoint": "https://api.deepseek.com/v1/chat/completions",
-        "key_env": "DEEPSEEK_API_KEY",
-        "model": "deepseek-chat",
     },
     {
         "name": "Anthropic",
         "endpoint": "https://api.anthropic.com/v1/messages",
         "key_env": "ANTHROPIC_API_KEY",
-        "model": "claude-opus-4-6-20250514",
+        "model": "claude-opus-4-7",
         "type": "anthropic",
+        "extra_body": {"tools": [{"type": "web_search_20250305"}]},
     },
     {
         "name": "OpenAI",
         "endpoint": "https://api.openai.com/v1/chat/completions",
         "key_env": "OPENAI_API_KEY",
-        "model": "gpt-4o",
+        "model": "gpt-5.5",
     },
 ]
 
@@ -151,13 +146,22 @@ def _call_anthropic(api_key: str, model: str, user_msg: str) -> Optional[int]:
         "temperature": 0.0,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_msg}],
+        "tools": [{"type": "web_search_20250305"}],
+        "tool_choice": {"type": "auto"},
     }, headers={
         "x-api-key": api_key,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
     }, timeout=30)
     resp.raise_for_status()
-    text = resp.json()["content"][0]["text"]
+    # Extract text from response (may include tool_use blocks)
+    content = resp.json().get("content", [])
+    text = ""
+    for block in content:
+        if block.get("type") == "text":
+            text += block.get("text", "")
+    if not text:
+        return None
     return _parse_response(text, 100)
 
 
