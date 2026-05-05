@@ -1,59 +1,59 @@
-//! 高性能訂單簿撮合引擎
+//! High-Performance Order Book Matching Engine
 //!
-//! 資料結構:
-//!   BTreeMap<Price, Vec<OrderId>> — 按價格排序，同價用 Vec 存（FIFO）
-//!   買單: Reverse<BTreeMap> — 價格從高到低
-//!   賣單: BTreeMap — 價格從低到高
+//! Data structures:
+//!   BTreeMap<Price, Vec<OrderId>> — sorted by price, same price stored in Vec (FIFO)
+//!   Bids: BTreeMap iterated in reverse — price high to low
+//!   Asks: BTreeMap — price low to high
 //!
-//! 撮合規則:
-//!   1. 價格優先（買單最高價優先，賣單最低價優先）
-//!   2. 時間優先（同價先下單先吃）
-//!   3. 部分成交支持（剩餘量保留掛單）
+//! Matching rules:
+//!   1. Price priority (highest bid first, lowest ask first)
+//!   2. Time priority (first order at same price gets filled first)
+//!   3. Partial fill support (remaining quantity stays in the book)
 
 use std::collections::{BTreeMap, HashMap};
 use serde::{Deserialize, Serialize};
 
-/// 訂單
+/// Order
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Order {
     pub id: u64,
-    pub maker: String,          // 0x... 以太坊地址
-    pub option_index: usize,    // 選項索引
-    pub is_bid: bool,           // true=買, false=賣
-    pub price: u128,            // 每股價格 (wei)
-    pub amount: u128,           // 原始下單量 (share-units = wei)
-    pub filled: u128,           // 已成交量
-    pub timestamp: u64,         // Unix 毫秒
+    pub maker: String,          // 0x... Ethereum address
+    pub option_index: usize,    // Option index
+    pub is_bid: bool,           // true=buy, false=sell
+    pub price: u128,            // Price per share (wei)
+    pub amount: u128,           // Original order quantity (share-units = wei)
+    pub filled: u128,           // Filled quantity
+    pub timestamp: u64,         // Unix milliseconds
 }
 
-/// 單個選項的訂單簿
+/// Order book for a single option
 #[derive(Debug, Clone, Default)]
 pub struct OptionBook {
-    /// 買單隊列: <price, Vec<order_id>>  價格高→低
+    /// Bid queue: <price, Vec<order_id>>  high→low
     pub bids: BTreeMap<u128, Vec<u64>>,
-    /// 賣單隊列: <price, Vec<order_id>>  價格低→高
+    /// Ask queue: <price, Vec<order_id>>  low→high
     pub asks: BTreeMap<u128, Vec<u64>>,
 }
 
-/// 訂單簿引擎
+/// Order book engine
 pub struct OrderBookEngine {
-    /// 所有訂單 (order_id → Order)
+    /// All orders (order_id → Order)
     pub orders: HashMap<u64, Order>,
-    /// 每個選項的訂單簿
+    /// Order book for each option
     pub books: Vec<OptionBook>,
-    /// 用戶持倉: user → option_index → shares
+    /// User positions: user → option_index → shares
     pub positions: HashMap<String, Vec<u128>>,
-    /// 用戶可用餘額 (wei)
+    /// User available balance (wei)
     pub balances: HashMap<String, u128>,
-    /// 用戶活躍訂單 ID 列表
+    /// User active order ID list
     pub user_order_ids: HashMap<String, Vec<u64>>,
-    /// 下一個訂單 ID
+    /// Next order ID
     next_id: u64,
-    /// 選項數量
+    /// Number of options
     option_count: usize,
 }
 
-/// 成交記錄
+/// Trade record
 #[derive(Debug, Clone, Serialize)]
 pub struct Trade {
     pub buy_order_id: u64,
@@ -66,13 +66,13 @@ pub struct Trade {
     pub timestamp: u64,
 }
 
-/// 掛單響應
+/// Place order response
 #[derive(Debug, Serialize)]
 pub struct PlaceOrderResult {
-    pub order_id: u64,          // 0 = 全部立即成交
-    pub filled: u128,           // 立即成交量
-    pub remaining: u128,        // 掛單剩餘量
-    pub trades: Vec<Trade>,     // 成交記錄
+    pub order_id: u64,          // 0 = fully filled immediately
+    pub filled: u128,           // Immediate filled amount
+    pub remaining: u128,        // Remaining order quantity
+    pub trades: Vec<Trade>,     // Trade records
 }
 
 impl OrderBookEngine {
@@ -99,12 +99,12 @@ impl OrderBookEngine {
         id
     }
 
-    /// 用戶入金（從鏈上 deposit 事件同步）
+    /// User deposit (synced from on-chain deposit event)
     pub fn deposit(&mut self, user: &str, amount: u128) {
         *self.balances.entry(user.to_string()).or_insert(0) += amount;
     }
 
-    /// 用戶提現（需 TEE 簽名後才能實際轉出）
+    /// User withdrawal (requires TEE signature for actual transfer)
     pub fn withdraw(&mut self, user: &str, amount: u128) -> bool {
         let bal = self.balances.entry(user.to_string()).or_insert(0);
         if *bal < amount { return false; }
@@ -112,20 +112,20 @@ impl OrderBookEngine {
         true
     }
 
-    /// 下限價買單
+    /// Place limit buy order
     pub fn place_buy(&mut self, maker: &str, option: usize, price: u128, amount: u128) -> PlaceOrderResult {
         let total_cost = (price * amount) / 1_000_000_000_000_000_000u128;
         let bal = self.balances.entry(maker.to_string()).or_insert(0);
         if *bal < total_cost {
             return PlaceOrderResult { order_id: 0, filled: 0, remaining: amount, trades: vec![] };
         }
-        *bal -= total_cost;  // 鎖定資金
+        *bal -= total_cost;  // Lock funds
 
         let mut remaining = amount;
         let mut trades = Vec::new();
         let mut filled = 0u128;
 
-        // 撮合賣單（價格低→高）
+        // Match sell orders (price low→high)
         let book = &mut self.books[option];
         let ask_prices: Vec<u128> = book.asks.keys().copied().collect();
         let mut to_remove = Vec::new();
@@ -144,12 +144,12 @@ impl OrderBookEngine {
                         let match_amt = remaining.min(ask_remain);
                         let cost = (ask_price * match_amt) / 1_000_000_000_000_000_000u128;
 
-                        // 賣方收到 ETH
+                        // Seller receives ETH
                         *self.balances.entry(ask.maker.clone()).or_insert(0) += cost;
-                        // 退買方差價
+                        // Refund price difference to buyer
                         let refund = ((price - ask_price) * match_amt) / 1_000_000_000_000_000_000u128;
                         *self.balances.entry(maker.to_string()).or_insert(0) += refund;
-                        // 股票轉移
+                        // Transfer shares
                         self.positions.entry(maker.to_string()).or_insert_with(|| vec![0; self.option_count])[option] += match_amt;
 
                         ask.filled += match_amt;
@@ -183,7 +183,7 @@ impl OrderBookEngine {
             book.asks.remove(p);
         }
 
-        // 剩餘掛買單
+        // Remaining quantity becomes a resting buy order
         let order_id = if remaining > 0 {
             let id = self.next_order_id();
             let order = Order {
@@ -192,8 +192,8 @@ impl OrderBookEngine {
                 timestamp: Self::now_ms(),
             };
             let entry = book.bids.entry(price).or_default();
-            // 買單按價格高→低，需要 reverse iteration。這裡用 reverse key 儲存
-            // BTreeMap 默認升序。我們在查詢時 reverse iterate。
+            // Bids need reverse iteration (price high→low).
+            // BTreeMap defaults to ascending order. We reverse iterate when querying.
             entry.push(id);
             self.orders.insert(id, order);
             self.user_order_ids.entry(maker.to_string()).or_default().push(id);
@@ -205,21 +205,21 @@ impl OrderBookEngine {
         PlaceOrderResult { order_id, filled, remaining, trades }
     }
 
-    /// 下限價賣單
+    /// Place limit sell order
     pub fn place_sell(&mut self, maker: &str, option: usize, price: u128, amount: u128) -> PlaceOrderResult {
         let pos = self.positions.entry(maker.to_string()).or_insert_with(|| vec![0; self.option_count]);
         if pos[option] < amount {
             return PlaceOrderResult { order_id: 0, filled: 0, remaining: amount, trades: vec![] };
         }
-        pos[option] -= amount;  // 鎖定股票
+        pos[option] -= amount;  // Lock shares
 
         let mut remaining = amount;
         let mut trades = Vec::new();
         let mut filled = 0u128;
 
-        // 撮合買單（價格高→低，reverse iterate BTreeMap）
+        // Match buy orders (price high→low, reverse iterate BTreeMap)
         let book = &mut self.books[option];
-        let bid_prices: Vec<u128> = book.bids.keys().copied().rev().collect(); // 高→低
+        let bid_prices: Vec<u128> = book.bids.keys().copied().rev().collect(); // high→low
         let mut to_remove = Vec::new();
 
         for bid_price in bid_prices {
@@ -236,9 +236,9 @@ impl OrderBookEngine {
                         let match_amt = remaining.min(bid_remain);
                         let revenue = (bid_price * match_amt) / 1_000_000_000_000_000_000u128;
 
-                        // 賣方收到 ETH（按買價成交）
+                        // Seller receives ETH (executed at bid price)
                         *self.balances.entry(maker.to_string()).or_insert(0) += revenue;
-                        // 買方獲得股票
+                        // Buyer receives shares
                         self.positions.entry(bid.maker.clone()).or_insert_with(|| vec![0; self.option_count])[option] += match_amt;
 
                         bid.filled += match_amt;
@@ -290,7 +290,7 @@ impl OrderBookEngine {
         PlaceOrderResult { order_id, filled, remaining, trades }
     }
 
-    /// 取消訂單
+    /// Cancel order
     pub fn cancel_order(&mut self, maker: &str, order_id: u64) -> Option<(u128, u128)> {
         let order = self.orders.get_mut(&order_id)?;
         if order.maker != maker { return None; }
@@ -299,18 +299,18 @@ impl OrderBookEngine {
 
         let book = &mut self.books[order.option_index];
         if order.is_bid {
-            // 退還鎖定資金
+            // Refund locked funds
             let refund = (order.price * remaining) / 1_000_000_000_000_000_000u128;
             *self.balances.entry(maker.to_string()).or_insert(0) += refund;
-            // 從買單隊列移除
+            // Remove from bid queue
             if let Some(ids) = book.bids.get_mut(&order.price) {
                 ids.retain(|&id| id != order_id);
                 if ids.is_empty() { book.bids.remove(&order.price); }
             }
         } else {
-            // 退還鎖定股票
+            // Refund locked shares
             self.positions.entry(maker.to_string()).or_insert_with(|| vec![0; self.option_count])[order.option_index] += remaining;
-            // 從賣單隊列移除
+            // Remove from ask queue
             if let Some(ids) = book.asks.get_mut(&order.price) {
                 ids.retain(|&id| id != order_id);
                 if ids.is_empty() { book.asks.remove(&order.price); }
@@ -324,13 +324,13 @@ impl OrderBookEngine {
         Some((refund, remaining))
     }
 
-    /// 獲取訂單簿深度（用於前端展示）
+    /// Get order book depth (for frontend display)
     pub fn depth(&self, option: usize) -> (Vec<(u128, u128)>, Vec<(u128, u128)>) {
         let book = &self.books[option];
         let mut bids: Vec<(u128, u128)> = Vec::new();
         let mut asks: Vec<(u128, u128)> = Vec::new();
 
-        // 買單：價格高→低
+        // Bids: price high→low
         for (&price, ids) in book.bids.iter().rev() {
             let total: u128 = ids.iter()
                 .filter_map(|id| self.orders.get(id))
@@ -339,7 +339,7 @@ impl OrderBookEngine {
             if total > 0 { bids.push((price, total)); }
         }
 
-        // 賣單：價格低→高
+        // Asks: price low→high
         for (&price, ids) in book.asks.iter() {
             let total: u128 = ids.iter()
                 .filter_map(|id| self.orders.get(id))
@@ -351,7 +351,7 @@ impl OrderBookEngine {
         (bids, asks)
     }
 
-    /// 計算最終結算金額（勝出選項贏家每股 = 1 ETH）
+    /// Calculate final settlement amount (winning option winners receive 1 ETH per share)
     pub fn calculate_settlement(&self, winning_option: usize) -> Vec<(String, u128)> {
         let mut payouts = Vec::new();
         for (user, positions) in &self.positions {

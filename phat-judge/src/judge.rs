@@ -1,4 +1,4 @@
-//! AI 裁判 — 調用 OpenRouter API
+//! AI Judge — Calls OpenRouter API
 
 use serde::{Deserialize, Serialize};
 
@@ -60,8 +60,8 @@ impl AiJudge {
         }
     }
 
-    /// 判斷賭約結果
-    /// 返回：選項索引 (0-based)
+    /// Judge the outcome of a bet
+    /// Returns: option index (0-based)
     pub fn judge(&self, question: &str, options: &[String]) -> Option<usize> {
         let options_text: Vec<String> = options.iter()
             .enumerate()
@@ -78,7 +78,7 @@ impl AiJudge {
         for attempt in 0..3 {
             match self.call_api(&user_message) {
                 Ok(response) => {
-                    // 解析回應為數字
+                    // Parse response as a number
                     let trimmed = response.trim();
                     if let Ok(idx) = trimmed.parse::<usize>() {
                         if idx < options.len() {
@@ -87,7 +87,7 @@ impl AiJudge {
                         }
                     }
                     log::warn!("Unexpected AI response: {}", trimmed);
-                    // 嘗試在回應中找數字
+                    // Try to find a digit in the response
                     if let Some(first_num) = trimmed.chars().find(|c| c.is_ascii_digit()) {
                         if let Some(idx) = first_num.to_digit(10) {
                             let idx = idx as usize;
@@ -105,7 +105,7 @@ impl AiJudge {
                 }
             }
         }
-        None // 無法判斷
+        None // Unable to determine
     }
 
     fn call_api(&self, user_message: &str) -> Result<String, Box<dyn std::error::Error>> {

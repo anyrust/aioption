@@ -6,15 +6,15 @@ import "./ProviderRegistry.sol";
 
 /**
  * @title BetFactory
- * @notice 賭約合約工廠 — 部署新的 BetContract
+ * @notice Bet contract factory — deploys new BetContract instances
  * @dev
- *   任何人可以創建賭約，指定：
- *   - 使用的裁判（appId + version + fingerprint）
- *   - 支付代幣（ETH / USDT / WBTC）
- *   - 下注時間窗口
- *   - 最少 Provider 解析數
+ *   Anyone can create a bet, specifying:
+ *   - The judge to use (appId + version + fingerprint)
+ *   - Payment token (ETH / USDT / WBTC)
+ *   - Betting time window
+ *   - Minimum number of provider resolutions
  *
- *   創建者支付少量 ETH 作為部署費（覆蓋 gas + 平台費）
+ *   The creator pays a small amount of ETH as a deploy fee (covers gas + platform fee)
  */
 contract BetFactory {
     // ============ Errors ============
@@ -36,25 +36,25 @@ contract BetFactory {
 
     // ============ State ============
 
-    /// @notice ProviderRegistry 合約
+    /// @notice ProviderRegistry contract
     ProviderRegistry public immutable providerRegistry;
 
-    /// @notice 合約管理者
+    /// @notice Contract owner
     address public owner;
 
-    /// @notice 部署新賭約的費用（ETH wei，覆蓋 gas）
+    /// @notice Fee for deploying a new bet (ETH wei, covers gas)
     uint256 public deployFee;
 
-    /// @notice 平台手續費（從賭注中抽取，basis points: 100 = 1%）
+    /// @notice Platform fee (taken from bets, basis points: 100 = 1%)
     uint256 public platformFeeBps;
 
-    /// @notice 所有已部署的賭約
+    /// @notice All deployed bet contracts
     address[] public allBets;
 
-    /// @notice creator => 他創建的賭約列表
+    /// @notice creator => list of bets they created
     mapping(address => address[]) public creatorBets;
 
-    /// @notice 支援的 ERC20 代幣列表
+    /// @notice Supported ERC20 token list
     mapping(address => bool) public supportedTokens;
 
     // ============ Modifiers ============
@@ -81,13 +81,13 @@ contract BetFactory {
     // ============ Create Bet ============
 
     /**
-     * @notice 創建新賭約
-     * @param _config 賭約配置
+     * @notice Create a new bet
+     * @param _config Bet configuration
      *
-     * 流程：
-     * 1. 驗證 fingerprint 匹配 ProviderRegistry 中的註冊
-     * 2. 部署新的 BetContract
-     * 3. 自動啟動下注階段
+     * Process:
+     * 1. Verify fingerprint matches registration in ProviderRegistry
+     * 2. Deploy a new BetContract
+     * 3. Automatically start the betting phase
      */
     function createBet(BetContract.BetConfig calldata _config)
         external
@@ -96,7 +96,7 @@ contract BetFactory {
     {
         if (msg.value < deployFee) revert InsufficientDeployFee();
 
-        // 驗證 fingerprint 匹配鏈上註冊
+        // Verify fingerprint matches on-chain registration
         bool valid = providerRegistry.verifyFingerprint(
             _config.judgeAppId,
             _config.judgeVersion,
@@ -104,17 +104,17 @@ contract BetFactory {
         );
         if (!valid) revert FingerprintMismatch();
 
-        // 部署 BetContract（僅支援 ETH）
+        // Deploy BetContract (ETH only)
         betContract = address(new BetContract(address(providerRegistry), _config));
 
-        // 記錄
+        // Record
         allBets.push(betContract);
         creatorBets[msg.sender].push(betContract);
 
-        // 啟動下注
+        // Start betting
         BetContract(payable(betContract)).startBetting();
 
-        // 退還多餘 ETH
+        // Refund excess ETH
         if (msg.value > deployFee) {
             (bool ok, ) = msg.sender.call{value: msg.value - deployFee}("");
             if (!ok) revert TransferFailed();
@@ -130,8 +130,8 @@ contract BetFactory {
     }
 
     /**
-     * @notice 觸發賭約進入解析階段
-     * @dev 下注結束後任何人可調用
+     * @notice Trigger a bet to enter the resolving phase
+     * @dev Anyone can call this after betting ends
      */
     function triggerResolving(address _betContract) external {
         BetContract bet = BetContract(payable(_betContract));
@@ -141,14 +141,14 @@ contract BetFactory {
     // ============ View Functions ============
 
     /**
-     * @notice 獲取所有賭約數量
+     * @notice Get total number of bets
      */
     function getBetCount() external view returns (uint256) {
         return allBets.length;
     }
 
     /**
-     * @notice 獲取所有賭約（支援分頁）
+     * @notice Get all bets (with pagination support)
      */
     function getBets(uint256 _offset, uint256 _limit)
         external
@@ -167,7 +167,7 @@ contract BetFactory {
     }
 
     /**
-     * @notice 獲取某創建者的賭約列表
+     * @notice Get a creator's bet list
      */
     function getCreatorBets(address _creator)
         external
@@ -180,7 +180,7 @@ contract BetFactory {
     // ============ Admin ============
 
     /**
-     * @notice 添加支援的 ERC20 代幣
+     * @notice Add a supported ERC20 token
      */
     function addSupportedToken(address _token) external onlyOwner {
         require(_token != address(0), "Zero address");
@@ -188,14 +188,14 @@ contract BetFactory {
     }
 
     /**
-     * @notice 移除支援的 ERC20 代幣
+     * @notice Remove a supported ERC20 token
      */
     function removeSupportedToken(address _token) external onlyOwner {
         supportedTokens[_token] = false;
     }
 
     /**
-     * @notice 修改部署費用
+     * @notice Update deploy fee
      */
     function setDeployFee(uint256 _newFee) external onlyOwner {
         emit DeployFeeUpdated(deployFee, _newFee);
@@ -203,7 +203,7 @@ contract BetFactory {
     }
 
     /**
-     * @notice 修改平台手續費
+     * @notice Update platform fee
      */
     function setPlatformFeeBps(uint256 _newFeeBps) external onlyOwner {
         require(_newFeeBps <= 500, "Fee too high");
@@ -212,7 +212,7 @@ contract BetFactory {
     }
 
     /**
-     * @notice 提取合約中的 ETH
+     * @notice Withdraw ETH from the contract
      */
     function withdrawETH() external onlyOwner {
         (bool ok, ) = owner.call{value: address(this).balance}("");
@@ -220,7 +220,7 @@ contract BetFactory {
     }
 
     /**
-     * @notice 轉移所有權
+     * @notice Transfer ownership
      */
     function transferOwnership(address _newOwner) external onlyOwner {
         require(_newOwner != address(0), "Zero address");

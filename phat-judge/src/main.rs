@@ -1,12 +1,12 @@
-//! AI Option Judge — 高性能 TEE 訂單簿 + AI 裁判
+//! AI Option Judge — High-Performance TEE Order Book + AI Judge
 //!
-//! 部署於 Phala Cloud (dstack CVM)，在 Intel TDX TEE 內執行
+//! Deployed on Phala Cloud (dstack CVM), running inside Intel TDX TEE
 //!
-//! 模組:
-//!   orderbook — BTreeMap 撮合引擎
+//! Modules:
+//!   orderbook — BTreeMap matching engine
 //!   judge     — OpenRouter AI API
-//!   server    — HTTP API (掛單/查盤口/取消)
-//!   settle    — 鏈上結算整合
+//!   server    — HTTP API (place order / order book depth / cancel)
+//!   settle    — On-chain settlement integration
 
 pub mod orderbook;
 pub mod judge;
@@ -16,7 +16,7 @@ pub mod server;
 use std::sync::{Arc, RwLock};
 use crate::orderbook::OrderBookEngine;
 
-/// 全局應用狀態（TEE 內共享）
+/// Global application state (shared within TEE)
 pub struct AppState {
     pub engine: Arc<RwLock<OrderBookEngine>>,
     pub rpc_url: String,

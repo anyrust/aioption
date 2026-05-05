@@ -1,4 +1,4 @@
-//! HTTP API Server — TEE 內部服務
+//! HTTP API Server — Internal TEE Service
 
 use std::sync::Arc;
 use axum::{
@@ -40,18 +40,18 @@ pub async fn run(state: AppState, port: u16) {
     let shared = Arc::new(state);
 
     let app = Router::new()
-        // 訂單簿
+        // Order book
         .route("/book/{option}", get(get_depth))
         .route("/order", post(place_order))
         .route("/order/{id}", delete(cancel_order))
-        // 資金
+        // Funds
         .route("/deposit", post(handle_deposit))
         .route("/balance/{user}", get(get_balance))
-        // 持倉
+        // Positions
         .route("/position/{user}", get(get_position))
-        // 健康檢查 + TEE 信息
+        // Health check + TEE info
         .route("/health", get(health))
-        // 結算（僅在 RESOLVED 後調用）
+        // Settlement (called only after RESOLVED)
         .route("/settle/{option}", post(settle))
         .with_state(shared);
 
@@ -159,7 +159,7 @@ async fn settle(
     let engine = state.engine.read().unwrap();
     let payouts = engine.calculate_settlement(winning);
 
-    // TODO: 用 TEE 私鑰簽名結算批次，提交到以太坊 BetContract.settle()
+    // TODO: Sign settlement batch with TEE private key, submit to Ethereum BetContract.settle()
     let total: u128 = payouts.iter().map(|(_, a)| a).sum();
 
     Json(serde_json::json!({

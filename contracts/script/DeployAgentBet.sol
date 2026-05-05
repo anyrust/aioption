@@ -8,7 +8,7 @@ import {BetFactory} from "../src/BetFactory.sol";
 
 /**
  * @title DeployAgentBet
- * @notice 部署 Agent Bet 全部核心合約
+ * @notice Deploy all core contracts for Agent Bet
  *
  * Usage:
  *   forge script script/DeployAgentBet.sol:DeployAgentBet \
@@ -22,13 +22,13 @@ contract DeployAgentBet is Script {
         // ============ Configuration ============
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
-        // PrefixRegistry: 註冊前綴費用 (0.001 ETH)
+        // PrefixRegistry: registration fee (0.001 ETH)
         uint256 registrationFee = 0.001 ether;
 
-        // ProviderRegistry: 最小押金 (0.001 ETH for testnet)
+        // ProviderRegistry: minimum stake (0.001 ETH for testnet)
         uint256 minStake = 0.001 ether;
 
-        // BetFactory: 部署費用 (0 ETH for MVP), 平台費 1%
+        // BetFactory: deployment fee (0 ETH for MVP), platform fee 1%
         uint256 deployFee = 0;
         uint256 platformFeeBps = 100; // 1%
 
@@ -57,8 +57,8 @@ contract DeployAgentBet is Script {
         // ============ Post-deploy Setup ============
 
         // Add supported tokens (USDT, WBTC on Sepolia)
-        // Sepolia USDT: 0x... (需要替換為實際地址)
-        // Sepolia WBTC: 0x... (需要替換為實際地址)
+        // Sepolia USDT: 0x... (needs to be replaced with actual address)
+        // Sepolia WBTC: 0x... (needs to be replaced with actual address)
 
         vm.stopBroadcast();
 

@@ -5,16 +5,16 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./ProviderRegistry.sol";
 
 /**
- * @title BetContract — 輕量結算合約
- * @notice 只負責 ETH 出入金 + AI 裁判 + TEE 批量結算。
- *         訂單簿撮合在 Phala TEE 鏈下執行，不上鏈。
+ * @title BetContract — Lightweight Settlement Contract
+ * @notice Handles only ETH deposit/withdrawal + AI judging + TEE batch settlement.
+ *         Order book matching is performed off-chain in Phala TEE, not on-chain.
  *
- *   狀態機：CREATED → BETTING → RESOLVING → RESOLVED
+ *   State machine: CREATED → BETTING → RESOLVING → RESOLVED
  *
- *   安全模型：
- *   - 撮合引擎在 TEE，攻擊不影響合約
- *   - 結算必須有 TEE ECDSA 簽名（來自 ProviderRegistry 註冊的 Provider）
- *   - deposit/withdraw 無限制（用戶自由出入金）
+ *   Security model:
+ *   - Matching engine runs in TEE; attacks cannot affect the contract
+ *   - Settlement requires TEE ECDSA signature (from a Provider registered in ProviderRegistry)
+ *   - deposit/withdraw are unrestricted (users freely deposit and withdraw)
  */
 contract BetContract is ReentrancyGuard {
     // ============ Enums ============
@@ -197,12 +197,12 @@ contract BetContract is ReentrancyGuard {
     // ============ Settlement (TEE Batch) ============
 
     /**
-     * @notice TEE 批量結算：一次上鏈分配所有贏家金額
-     * @param _recipients 收款地址列表
-     * @param _amounts    對應金額（wei）
-     * @param _teeSignature TEE ECDSA 簽名（Provider 的 TEE 密鑰）
+     * @notice TEE batch settlement: allocates all winner amounts in a single on-chain transaction
+     * @param _recipients List of recipient addresses
+     * @param _amounts    Corresponding amounts (wei)
+     * @param _teeSignature TEE ECDSA signature (Provider's TEE key)
      *
-     * 安全：簽名校驗通過 → 記錄結算金額 → 用戶自行 claim
+     * Security: signature verification → record settlement amounts → users claim themselves
      */
     function settle(
         address[] calldata _recipients,
@@ -213,7 +213,7 @@ contract BetContract is ReentrancyGuard {
         require(_recipients.length == _amounts.length, "Length mismatch");
         require(_recipients.length > 0, "Empty batch");
 
-        // 驗證 TEE 簽名 (來自 ProviderRegistry 中註冊的 Provider)
+        // Verify TEE signature (from a Provider registered in ProviderRegistry)
         bytes32 hash = keccak256(abi.encode(address(this), settlementNonce, _recipients, _amounts));
         bytes32 ethHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
         address signer = _recoverSigner(ethHash, _teeSignature);
@@ -222,14 +222,14 @@ contract BetContract is ReentrancyGuard {
         require(info.active, "Signer not active provider");
         require(keccak256(bytes(info.appId)) == keccak256(bytes(judgeAppId)), "Wrong app");
 
-        // 記錄結算
+        // Record settlement
         uint256 totalPayout;
         for (uint256 i = 0; i < _recipients.length; i++) {
             require(_recipients[i] != address(0), "Zero address");
             settledAmounts[_recipients[i]] = _amounts[i];
             totalPayout += _amounts[i];
         }
-        // 結算總額不超過合約餘額（安全檢查）
+        // Total payout must not exceed contract balance (safety check)
         require(totalPayout <= address(this).balance, "Insufficient contract balance");
 
         isSettled = true;
@@ -246,7 +246,7 @@ contract BetContract is ReentrancyGuard {
         require(amount > 0, "No reward");
 
         claimed[msg.sender] = true;
-        // 從 deposited 餘額中扣除（用戶可能已有餘額+獎金）
+        // Deduct from deposited balance (user may already have balance + reward)
         settledAmounts[msg.sender] = 0;
 
         (bool ok,) = msg.sender.call{value: amount}("");
