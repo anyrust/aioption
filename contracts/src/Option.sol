@@ -169,6 +169,7 @@ contract Option is ReentrancyGuard {
 
         ProviderRegistry.ProviderInfo memory info = providerRegistry.getProviderInfo(msg.sender);
         require(info.active, "Not active provider");
+        require(msg.sender != creator, "Creator cannot be provider");
         require(keccak256(bytes(info.appId)) == keccak256(bytes(judgeAppId)), "Wrong app");
         require(info.version == judgeVersion, "Wrong version");
 
@@ -241,6 +242,9 @@ contract Option is ReentrancyGuard {
             if (r.round == reRound && r.timestamp > 0) { if (r.result < optionCount) votes[r.result]++; c++; }
         }
         total = c;
+    }
+    function getResolutionProviders() external view returns (address[] memory) {
+        return resolutionProviders;
     }
     function getResolutions() external view returns (Resolution[] memory result) {
         result = new Resolution[](resolutionProviders.length);
