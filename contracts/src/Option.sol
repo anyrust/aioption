@@ -109,7 +109,7 @@ contract Option is ReentrancyGuard {
         require(_config.judgeFingerprint != bytes32(0), "Zero fingerprint");
         require(_config.tradingEndTime > _config.tradingStartTime, "Times");
         require(_config.resolveDeadline > _config.tradingEndTime, "Deadline");
-        require(_config.minResolutions >= 2, "Need >= 2 providers");  // at least 2
+        require(_config.minResolutions >= 1, "Need >= 1 provider");  // 1 provider with multiple LLMs
         uint256 n = _config.options.length;
         require(n >= 2, "Need >= 2 options");
 

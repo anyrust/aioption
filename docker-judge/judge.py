@@ -86,40 +86,80 @@ PROVIDERS = [
 ]
 
 
-def query_ai(question: str, options: list[str]) -> Optional[int]:
-    """Try each provider in order. Return option index or None if all fail."""
+def query_ai(question: str, options: list[str], max_reruns: int = 3) -> Optional[int]:
+    """Query ALL configured providers. Require majority consensus.
+    If tie, re-run up to max_reruns times. Returns winning option index or None."""
 
     options_text = "\n".join(f"[{i}] {name}" for i, name in enumerate(options))
     user_msg = f"Question: {question}\n\nOptions:\n{options_text}\n\nWhich option index is correct? Output ONLY the number."
 
-    for provider in PROVIDERS:
-        api_key = os.getenv(provider["key_env"], "")
-        endpoint = provider["endpoint"]
-        if not api_key or not endpoint:
-            continue
+    # Collect available providers (those with API key set)
+    available = []
+    for p in PROVIDERS:
+        if os.getenv(p["key_env"], "") and p["endpoint"]:
+            available.append(p)
 
-        logger.info(f"Trying {provider['name']} ({provider['model']})...")
+    if len(available) < 2:
+        logger.error(f"Need at least 2 LLM providers configured, only {len(available)} available")
+        return None
 
-        try:
-            if provider.get("type") == "anthropic":
-                result = _call_anthropic(api_key, provider["model"], user_msg)
-            else:
-                result = _call_openai_compat(
-                    endpoint, api_key, provider["model"],
-                    user_msg, provider.get("headers", {}),
-                    provider.get("extra_body")
-                )
+    logger.info(f"Querying {len(available)} providers: {[p['name'] for p in available]}")
 
-            if result is not None:
-                logger.info(f"{provider['name']} → option {result}")
-                return result
-            else:
-                logger.warning(f"{provider['name']} returned unexpected output")
+    for attempt in range(max_reruns):
+        results: dict[int, int] = {}  # option_index → vote count
+        round_label = f"Round {attempt + 1}/{max_reruns}" if attempt > 0 else ""
 
-        except Exception as e:
-            logger.warning(f"{provider['name']} failed: {e}")
+        for provider in available:
+            api_key = os.getenv(provider["key_env"], "")
+            endpoint = provider["endpoint"]
+            if not api_key or not endpoint:
+                continue
 
-    logger.error("ALL providers failed — returning UNCLEAR")
+            logger.info(f"{round_label} {provider['name']} ({provider['model']})...")
+
+            try:
+                if provider.get("type") == "anthropic":
+                    result = _call_anthropic(api_key, provider["model"], user_msg)
+                else:
+                    result = _call_openai_compat(
+                        endpoint, api_key, provider["model"],
+                        user_msg, provider.get("headers", {}),
+                        provider.get("extra_body")
+                    )
+
+                if result is not None and 0 <= result < len(options):
+                    results[result] = results.get(result, 0) + 1
+                    logger.info(f"  {provider['name']} → option {result} ({options[result]})")
+                else:
+                    logger.warning(f"  {provider['name']} → invalid/unexpected output")
+
+            except Exception as e:
+                logger.warning(f"  {provider['name']} → ERROR: {e}")
+
+        if not results:
+            logger.error("No valid results from any provider")
+            if attempt < max_reruns - 1:
+                time.sleep(2)
+                continue
+            return None
+
+        # Check for majority (>= 2 votes same option)
+        max_votes = max(results.values())
+        total_votes = sum(results.values())
+
+        if max_votes >= 2:
+            # Find the winning option
+            for opt, votes in results.items():
+                if votes == max_votes:
+                    logger.info(f"Consensus: option {opt} with {max_votes}/{total_votes} votes")
+                    return opt
+
+        # Tie or no majority — re-run
+        logger.warning(f"No majority ({results}), re-running...")
+        if attempt < max_reruns - 1:
+            time.sleep(2)
+
+    logger.error(f"No consensus after {max_reruns} rounds — skipping")
     return None
 
 
