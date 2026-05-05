@@ -165,7 +165,7 @@ def query_ai(question: str, options: list[str], max_reruns: int = 3) -> Optional
 
 def _call_openai_compat(endpoint: str, api_key: str, model: str,
                          user_msg: str, extra_headers: dict,
-                         extra_body: dict | None = None) -> Optional[int]:
+                         extra_body=None) -> Optional[int]:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     headers.update(extra_headers)
 
@@ -183,7 +183,7 @@ def _call_openai_compat(endpoint: str, api_key: str, model: str,
 
     resp = requests.post(endpoint, json=body, headers=headers, timeout=30)
     resp.raise_for_status()
-    return _parse_response(resp.json()["choices"][0]["message"]["content"], len(options))
+    return _parse_response(resp.json()["choices"][0]["message"]["content"], 100)
 
 
 def _call_anthropic(api_key: str, model: str, user_msg: str) -> Optional[int]:
