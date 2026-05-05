@@ -169,7 +169,6 @@ contract Option is ReentrancyGuard {
 
         ProviderRegistry.ProviderInfo memory info = providerRegistry.getProviderInfo(msg.sender);
         require(info.active, "Not active provider");
-        require(msg.sender != creator, "Creator cannot be provider");
         require(keccak256(bytes(info.appId)) == keccak256(bytes(judgeAppId)), "Wrong app");
         require(info.version == judgeVersion, "Wrong version");
 
