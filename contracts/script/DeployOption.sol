@@ -1,34 +1,18 @@
-// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
-
-import {Script, console} from "forge-std/Script.sol";
+import {Script,console} from "forge-std/Script.sol";
 import {PrefixRegistry} from "../src/PrefixRegistry.sol";
 import {ProviderRegistry} from "../src/ProviderRegistry.sol";
 import {OptionFactory} from "../src/OptionFactory.sol";
-
 contract DeployOption is Script {
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        uint256 registrationFee = 0.001 ether;
-        uint256 minStake = 0.001 ether;
-        uint256 deployFee = 0;
-
-        vm.startBroadcast(deployerPrivateKey);
-
-        PrefixRegistry prefixRegistry = new PrefixRegistry(registrationFee);
-        console.log("PrefixRegistry deployed at:", address(prefixRegistry));
-
-        ProviderRegistry providerRegistry = new ProviderRegistry(address(prefixRegistry), minStake);
-        console.log("ProviderRegistry deployed at:", address(providerRegistry));
-
-        OptionFactory optionFactory = new OptionFactory(address(providerRegistry), deployFee);
-        console.log("OptionFactory deployed at:", address(optionFactory));
-
+        uint256 k = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        vm.startBroadcast(k);
+        PrefixRegistry p = new PrefixRegistry(0.001 ether);
+        console.log("PrefixRegistry:", address(p));
+        ProviderRegistry r = new ProviderRegistry(address(p), 0.0001 ether);
+        console.log("ProviderRegistry:", address(r));
+        OptionFactory f = new OptionFactory(address(r));
+        console.log("OptionFactory:", address(f));
         vm.stopBroadcast();
-
-        console.log("\n=== Deployment Summary ===");
-        console.log("PrefixRegistry:  ", address(prefixRegistry));
-        console.log("ProviderRegistry:", address(providerRegistry));
-        console.log("OptionFactory:   ", address(optionFactory));
     }
 }
