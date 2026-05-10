@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./ProviderRegistry.sol";
+import "./ITEEVerifier.sol";
 
 /**
  * @title Option v2 — Binary prediction market with built-in order book
@@ -59,6 +61,8 @@ contract Option is ReentrancyGuard {
     uint256 public tradingEndTime;
     uint256 public resolveDeadline;
     Status  public status;
+    address public immutable token; // address(0)=ETH, else ERC20
+    address public immutable teeVerifier; // TEE verifier contract
 
     // ===== Balance =====
     mapping(address => uint256) public balances;
@@ -103,12 +107,15 @@ contract Option is ReentrancyGuard {
         bytes32  judgeFingerprint;
         uint256  tradingEndTime;
         uint256  resolveDeadline;
+        address  token; // address(0)=ETH
+        address  teeVerifier; // address(0)=no TEE verification required
     }
 
     constructor(address _pr, Config memory _c) {
         require(bytes(_c.question).length > 0); require(_c.judgeFingerprint != bytes32(0));
         require(_c.tradingEndTime > block.timestamp); require(_c.resolveDeadline > _c.tradingEndTime);
         factory = msg.sender; providerRegistry = ProviderRegistry(payable(_pr)); creator = tx.origin;
+        token = _c.token; teeVerifier = _c.teeVerifier;
         question = _c.question; judgeAppId = _c.judgeAppId; judgeVersion = _c.judgeVersion;
         judgeFingerprint = _c.judgeFingerprint; tradingEndTime = _c.tradingEndTime; resolveDeadline = _c.resolveDeadline;
         status = Status.CREATED;
@@ -116,9 +123,10 @@ contract Option is ReentrancyGuard {
 
     function startTrading() external onlyFactory inStatus(Status.CREATED) { status = Status.TRADING; }
     function startResolving() external inStatus(Status.TRADING) { require(block.timestamp >= tradingEndTime); status = Status.RESOLVING; }
-    receive() external payable { balances[msg.sender] += msg.value; emit Deposited(msg.sender, msg.value); }
-    function deposit() external payable { balances[msg.sender] += msg.value; emit Deposited(msg.sender, msg.value); }
-    function withdraw(uint256 _a) external nonReentrant { require(balances[msg.sender] >= _a); balances[msg.sender] -= _a; (bool ok,)=msg.sender.call{value:_a}(""); require(ok); emit Withdrawn(msg.sender, _a); }
+    receive() external payable { require(token == address(0)); balances[msg.sender] += msg.value; emit Deposited(msg.sender, msg.value); }
+    function deposit() external payable { require(token == address(0)); balances[msg.sender] += msg.value; emit Deposited(msg.sender, msg.value); }
+    function depositToken(uint256 _a) external { require(token != address(0)); IERC20(token).transferFrom(msg.sender, address(this), _a); balances[msg.sender] += _a; emit Deposited(msg.sender, _a); }
+    function withdraw(uint256 _a) external nonReentrant { require(balances[msg.sender] >= _a); balances[msg.sender] -= _a; _pay(msg.sender, _a); emit Withdrawn(msg.sender, _a); }
 
     // ================================================================
     // ORDER BOOK — Binary (YES=0, NO=1)
@@ -211,6 +219,42 @@ contract Option is ReentrancyGuard {
         _finalize();
     }
 
+    /**
+     * @notice Provider submits TEE-verified resolution. Attestation quote proves:
+     *         1. Genuine Intel TEE hardware
+     *         2. Running specific code (code hash matches registered fingerprint)
+     *         3. Signature comes from the TEE (key derived from hardware+cod
+     *         No human can tamper — hardware enforces it.
+     */
+    function submitResolutionTEE(uint256 _result, bytes calldata _sig, bytes calldata _quote)
+        external inStatus(Status.RESOLVING)
+    {
+        require(block.timestamp <= resolveDeadline && _result <= 1);
+        require(resolutions[msg.sender].timestamp == 0);
+
+        // Verify TEE attestation on-chain
+        ITEEVerifier v = ITEEVerifier(teeVerifier);
+        require(address(v) != address(0), "No TEE verifier");
+        (bool valid, bytes32 codeHash, bytes memory teePubKey) = v.verify(_quote);
+        require(valid, "TEE verification failed");
+
+        // Code hash must match registered fingerprint
+        require(codeHash == judgeFingerprint, "Wrong code version");
+
+        // Provider must be registered for this judge app
+        ProviderRegistry.ProviderInfo memory info = providerRegistry.getProviderInfo(msg.sender);
+        require(info.active && keccak256(bytes(info.appId)) == keccak256(bytes(judgeAppId)) && info.version == judgeVersion);
+
+        // Signature must come from the TEE
+        bytes32 h = keccak256(abi.encodePacked(address(this), question, _result));
+        require(_recover(keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", h)), _sig) == _pubKeyFromBytes(teePubKey), "Invalid TEE signature");
+
+        resolutions[msg.sender] = Resolution(msg.sender, _result, _sig, block.timestamp);
+        resolutionProviders.push(msg.sender); resolutionCount++;
+        emit ResolutionSubmitted(msg.sender, _result);
+        if (resolutionCount >= minResolutions) { winner = _result; _finalize(); }
+    }
+
     // ================================================================
     // SETTLEMENT
     // ================================================================
@@ -229,8 +273,7 @@ contract Option is ReentrancyGuard {
 
     function claimReward() external nonReentrant inStatus(Status.RESOLVED) {
         require(isSettled && !claimed[msg.sender]); uint256 a = settledAmounts[msg.sender]; require(a > 0);
-        claimed[msg.sender] = true; settledAmounts[msg.sender] = 0;
-        (bool ok,)=msg.sender.call{value:a}(""); require(ok);
+        claimed[msg.sender] = true; settledAmounts[msg.sender] = 0; _pay(msg.sender, a);
         emit RewardClaimed(msg.sender, a);
     }
 
@@ -265,5 +308,18 @@ contract Option is ReentrancyGuard {
         require(_s.length == 65); bytes32 r; bytes32 s; uint8 v;
         assembly { r:=mload(add(_s,32)) s:=mload(add(_s,64)) v:=byte(0,mload(add(_s,96))) }
         if (v<27) v+=27; require(v==27||v==28); return ecrecover(_h,v,r,s);
+    }
+
+    function _pay(address _to, uint256 _a) internal { if (_a==0) return; if (token==address(0)) { (bool ok,)=_to.call{value:_a}(""); require(ok); } else { IERC20(token).transfer(_to, _a); } }
+
+    /// @dev Convert TEE public key bytes to Ethereum address
+    function _pubKeyFromBytes(bytes memory _pk) internal pure returns (address) {
+        // Uncompressed: 0x04 || 64 bytes. Skip 0x04, hash rest.
+        uint256 len = _pk.length;
+        require(len == 64 || len == 65); // 64 raw or 65 with 0x04 prefix
+        bytes32 h;
+        uint256 offset = len == 65 ? 1 : 0;
+        assembly { h := keccak256(add(_pk, add(32, offset)), sub(len, offset)) }
+        return address(uint160(uint256(h)));
     }
 }

@@ -35,7 +35,9 @@ contract MinimalTest is Test {
             judgeAppId: "aijudge", judgeVersion: 1,
             judgeFingerprint: bytes32(uint256(0xdeadbeef01)),
             tradingEndTime: block.timestamp + 1 hours,
-            resolveDeadline: block.timestamp + 2 hours
+            resolveDeadline: block.timestamp + 2 hours,
+            token: address(0),
+            teeVerifier: address(0)
         });
 
         vm.prank(d); address opt = f.create(c);

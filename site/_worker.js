@@ -1,5 +1,5 @@
 // AI Option — Single entry: MasterFactory aggregates everything
-const R="https://arb1.arbitrum.io/rpc",M="0x8cCACF70c3284542AC70e4C6106D583D963B1B32";
+const R="https://arb1.arbitrum.io/rpc",M="0x382941c8381315521C2afc92bfd7043E187A036a";
 async function rpc(m,d){const r=await fetch(R,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:m,params:d})});return(await r.json()).result}
 async function call(a,s){try{return await rpc("eth_call",[{to:a,data:s},"latest"])}catch(e){return null}}
 function hi(v){if(!v||v==="0x")return 0;return parseInt(v,16)}
